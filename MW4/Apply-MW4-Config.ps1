@@ -10,7 +10,9 @@
 #     (GPUUploadHeaps = false - the same as the app's "ReBAR off" CoD presets);
 #   - sets RendererWorkerCount for this PC's CPU (dual-CCD X3D: the V-cache cores minus one; Intel with E-cores:
 #     the performance cores minus one; anything else: cores minus one, at most 16);
-#   - on a PC without an NVIDIA card, switches DLSS anti-aliasing to SMAA and leaves the DLSS keys alone;
+#   - on a PC without an NVIDIA RTX card (DLSS needs one; a GTX card has none), switches DLSS anti-aliasing to SMAA and
+#     leaves the DLSS keys alone - built-in graphics on the CPU do not change this;
+#   - if MW4 is set to run on built-in graphics while the PC has an NVIDIA card, sets it to the NVIDIA card;
 #   - checks every value against the list the client's own file accepts, and names any it could not write.
 #
 # RUN IT AS THE CLIENT'S OWN WINDOWS USER (the settings live in that user's AppData), with Call of Duty closed.
@@ -586,7 +588,14 @@ $dropRe = '^(' + ($dropKeys -join '|') + ')@'
 $keepRe = '^(' + ($keepKeys -join '|') + ')@'
 
 # ---- This PC ----
-$hasNvidia = [bool](Get-CimInstance Win32_VideoController -EA SilentlyContinue | Where-Object { $_.PNPDeviceID -match 'VEN_10DE' })
+# DLSS needs an NVIDIA RTX card (GeForce RTX 20-series and later, or an RTX workstation card). A GTX card is NVIDIA
+# but has no DLSS. Built-in graphics (a Ryzen's Radeon, Intel UHD / Iris) change nothing: the question is whether ANY
+# card in the PC is RTX, not which adapter Windows lists first.
+$nvCards = @(Get-CimInstance Win32_VideoController -EA SilentlyContinue | Where-Object { $_.PNPDeviceID -match 'VEN_10DE' })
+$dlssCard = @($nvCards | Where-Object { $_.Name -match 'RTX' }) | Select-Object -First 1
+$hasNvidia = [bool]$dlssCard   # "can run DLSS" - every DLSS decision below reads this
+# The card MW4 should run on: the RTX card, else any NVIDIA card. Set below only when the game is on built-in graphics.
+$gameGpu = if ($dlssCard) { $dlssCard.Name } elseif ($nvCards.Count -gt 0) { $nvCards[0].Name } else { '' }
 $coreListSrc = @'
 using System;
 using System.Collections.Generic;
@@ -639,7 +648,7 @@ elseif ($pCores -gt 0) { $workers = $pCores - 1; $why = "$pCores performance cor
 else { $workers = [math]::Min($cores - 1, 16); $why = "$cores cores minus one, at most 16" }
 if ($workers -lt 2) { $workers = 2; $why += ', raised to the minimum of 2' }
 Say 'INFO' ('CPU: ' + $cpuName + ' - ' + $cores + ' cores, ' + $threads + ' threads. RendererWorkerCount ' + $workers + ' (' + $why + ').')
-Say 'INFO' ('Graphics: ' + $(if ($hasNvidia) { 'NVIDIA - the preset''s DLSS settings are used.' } else { 'not NVIDIA - anti-aliasing set to SMAA, DLSS keys left alone.' }))
+Say 'INFO' ('Graphics: ' + $(if ($hasNvidia) { $dlssCard.Name + ' - the preset''s DLSS settings are used.' } else { 'no NVIDIA RTX card, so no DLSS - anti-aliasing set to SMAA, DLSS keys left alone.' }))
 
 # ---- Merge ----
 $script:notWritten = New-Object System.Collections.Generic.List[string]
@@ -701,6 +710,14 @@ function Apply-Preset($src, $dstFile) {
   # game can reject and then silently reset to its defaults.)
   [IO.File]::WriteAllText($dstFile, (($out -join "`n") + "`n"))
 }
+# Replace one key's value in place (first variant), keeping the line's IDs and comment, in the game's own format.
+function Set-Value($f, $name, $value) {
+  $ls = @(Get-Content $f -EA SilentlyContinue); $done = $false
+  for ($i = 0; $i -lt $ls.Count -and -not $done; $i++) {
+    if ($ls[$i] -match ('^(' + [regex]::Escape($name) + '@\d+;\d+;\d+ = )(.*?)((?: //.*)?)$')) { $ls[$i] = $Matches[1] + $value + $Matches[3]; $done = $true }
+  }
+  if ($done) { [IO.File]::WriteAllText($f, (($ls -join "`n") + "`n")) }
+}
 function Read-Value($f, $name) {
   foreach ($l in @(Get-Content $f -EA SilentlyContinue)) {
     if ($l -match ('^' + [regex]::Escape($name) + '@\d+;\d+;\d+ = (.*?)(?: //.*)?$')) { return $Matches[1].Trim() }
@@ -716,13 +733,14 @@ foreach ($tf in $targets) {
   $rb = @(); foreach ($k in 'GraphicsQuality', 'ResolutionMultiplier', 'AATechniquePreferredMP', 'DLSSPerfModeMP', 'ShadowQuality', 'TextureQuality', 'RendererWorkerCount', 'NvidiaReflex') { $rb += ($k + '=' + (Read-Value $tf.FullName $k)) }
   Say 'OK' ('Written and read back: ' + ($rb -join ', '))
   foreach ($nw in $script:notWritten) { Say 'WARN' ('Not written - ' + $nw + '. The preset value is not one this file accepts.') }
-  # Which GPU MW4 runs on is the player's own "Preferred GPU" setting, and this script never writes it. On a PC
-  # with built-in graphics as well as an NVIDIA card (a Ryzen with Radeon graphics, or an Intel laptop) the game can
-  # be set to the built-in one - usually because the monitor is plugged into the motherboard. Say so; change nothing.
+  # Which GPU MW4 runs on is its "Preferred GPU" setting (GPUName). On a PC with built-in graphics as well as an NVIDIA
+  # card (a Ryzen with Radeon graphics, or an Intel laptop) the game can end up on the built-in one. When it has, the
+  # NVIDIA card is set instead, by the exact name Windows gives it - the same name the game lists. An empty value is
+  # left alone: the game then picks for itself, which is the NVIDIA card.
   $gpuSet = Read-Value $tf.FullName 'GPUName'
-  if ($hasNvidia -and $gpuSet -and $gpuSet -ne '(not in this file)' -and $gpuSet -notmatch 'NVIDIA') {
-    $nv = (@(Get-CimInstance Win32_VideoController -EA SilentlyContinue | Where-Object { $_.PNPDeviceID -match 'VEN_10DE' }) | Select-Object -First 1).Name
-    Say 'WARN' ('MW4 is set to use ' + $gpuSet + ', not your NVIDIA card' + $(if ($nv) { ' (' + $nv + ')' } else { '' }) + '. In the game: Settings > Graphics > Display > Preferred GPU, pick the NVIDIA card. And plug the monitor into the graphics card, not the motherboard.')
+  if ($gameGpu -and $gpuSet -and $gpuSet -ne '(not in this file)' -and $gpuSet -notmatch 'NVIDIA') {
+    foreach ($f in @($tf.FullName, (Partner $tf.FullName))) { if ($f -and (Test-Path $f)) { Set-Value $f 'GPUName' $gameGpu } }
+    Say 'OK' ('MW4 was set to use ' + $gpuSet + ' - now set to ' + $gameGpu + '.')
   }
 }
 

@@ -18,7 +18,8 @@ Run it as your normal Windows user. Administrator is not needed.
 - The graphics and performance settings, written onto **your own** settings file.
 - Frame cap off, HDR off, and the game's Resizable BAR setting off.
 - Renderer worker count sized to your CPU (performance cores minus one on Intel with E-cores, the V-cache cores minus one on dual-CCD X3D Ryzen, otherwise cores minus one).
-- No NVIDIA card: anti-aliasing is set to SMAA and the DLSS settings are left alone.
+- No NVIDIA RTX card (DLSS needs one): anti-aliasing is set to SMAA and the DLSS settings are left alone. Built-in graphics on your CPU make no difference.
+- If MW4 was set to run on built-in graphics but your PC has an NVIDIA card, it is switched to the NVIDIA card.
 
 ## What it leaves alone
 
