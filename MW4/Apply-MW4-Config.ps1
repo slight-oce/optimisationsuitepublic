@@ -716,6 +716,14 @@ foreach ($tf in $targets) {
   $rb = @(); foreach ($k in 'GraphicsQuality', 'ResolutionMultiplier', 'AATechniquePreferredMP', 'DLSSPerfModeMP', 'ShadowQuality', 'TextureQuality', 'RendererWorkerCount', 'NvidiaReflex') { $rb += ($k + '=' + (Read-Value $tf.FullName $k)) }
   Say 'OK' ('Written and read back: ' + ($rb -join ', '))
   foreach ($nw in $script:notWritten) { Say 'WARN' ('Not written - ' + $nw + '. The preset value is not one this file accepts.') }
+  # Which GPU MW4 runs on is the player's own "Preferred GPU" setting, and this script never writes it. On a PC
+  # with built-in graphics as well as an NVIDIA card (a Ryzen with Radeon graphics, or an Intel laptop) the game can
+  # be set to the built-in one - usually because the monitor is plugged into the motherboard. Say so; change nothing.
+  $gpuSet = Read-Value $tf.FullName 'GPUName'
+  if ($hasNvidia -and $gpuSet -and $gpuSet -ne '(not in this file)' -and $gpuSet -notmatch 'NVIDIA') {
+    $nv = (@(Get-CimInstance Win32_VideoController -EA SilentlyContinue | Where-Object { $_.PNPDeviceID -match 'VEN_10DE' }) | Select-Object -First 1).Name
+    Say 'WARN' ('MW4 is set to use ' + $gpuSet + ', not your NVIDIA card' + $(if ($nv) { ' (' + $nv + ')' } else { '' }) + '. In the game: Settings > Graphics > Display > Preferred GPU, pick the NVIDIA card. And plug the monitor into the graphics card, not the motherboard.')
+  }
 }
 
 # ---- Shader caches (optional) ----
