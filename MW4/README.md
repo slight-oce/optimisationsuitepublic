@@ -24,10 +24,9 @@ Run it as your normal Windows user. Administrator is not needed.
 
 ## Recommended or Low
 
-**Recommended** is the competitive set described below. **Low** is the same, with:
-
-shaders, textures, models and texture filtering at their lowest, and water caustics off. DLSS, Reflex and everything
-else are the same. Pick Low for older or weaker PCs, or the most frames.
+**Recommended** is the competitive set described above. **Low** is the same, but with shaders, textures, models and
+texture filtering at their lowest and water caustics off; DLSS, Reflex and everything else stay the same. Pick Low for
+older or weaker PCs, or for the most frames.
 
 ## What it leaves alone
 
