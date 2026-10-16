@@ -1,0 +1,755 @@
+# Apply-MW4-Config.ps1 - Slightly Optimised, standalone Call of Duty: Modern Warfare 4 config swap.
+#
+# Same method as the app's CoD Settings (app/ps/cod-apply.ps1), for MW4 only (the cod26 settings file):
+#   - finds the client's MW4 settings file(s) where Battle.net and Steam keep them (the same folders as BO7);
+#   - backs each one up ONCE beside itself as <file>.sobak, so the original is never lost;
+#   - MERGES the preset onto the client's own file: only the graphics and performance VALUES change. The client's
+#     own setting IDs stay on every line, and their display mode, resolution, refresh rate, monitor, aspect ratio,
+#     audio and mic devices, controller and HUD settings, window placement and cap values are left alone;
+#   - turns the frame cap off and HDR off on every PC (owner's call);
+#   - sets RendererWorkerCount for this PC's CPU (dual-CCD X3D: the V-cache cores minus one; Intel with E-cores:
+#     the performance cores minus one; anything else: cores minus one, at most 16);
+#   - on a PC without an NVIDIA card, switches DLSS anti-aliasing to SMAA and leaves the DLSS keys alone;
+#   - checks every value against the list the client's own file accepts, and names any it could not write.
+#
+# RUN IT AS THE CLIENT'S OWN WINDOWS USER (the settings live in that user's AppData), with Call of Duty closed.
+#   Apply the built-in preset:    powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1
+#   Apply a preset file instead:  ... -File .\Apply-MW4-Config.ps1 -PresetPath "D:\presets\s.1.0.cod26.txt"
+#   Also clear shader caches:     ... -File .\Apply-MW4-Config.ps1 -RebuildShaders
+#   Put the original back:        ... -File .\Apply-MW4-Config.ps1 -Restore
+param([string]$PresetPath = '', [switch]$Restore, [switch]$RebuildShaders, [switch]$NoPause)
+$ErrorActionPreference = 'SilentlyContinue'
+
+function Say($kind, $text) {
+  $c = switch ($kind) { 'OK' { 'Green' } 'WARN' { 'Yellow' } 'ERR' { 'Red' } 'HEAD' { 'Cyan' } default { 'Gray' } }
+  Write-Host $text -ForegroundColor $c
+}
+function Done($code) { if (-not $NoPause) { [void](Read-Host 'Press Enter to close') }; exit $code }
+
+# The preset. Replace everything between the two marker lines with the new file to change the built-in preset.
+# The lines that identify a PC (GPU, drivers, monitor, resolution, audio devices, window position) are left out:
+# the script never writes them, so each PC keeps its own.
+$builtInPreset = @'
+1
+
+
+//
+// Audio
+
+// Adjusts the volume of audio in Cinematics
+CinematicVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts the volume of the sound effects
+EffectsVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts the volume of hit markers
+HitMarkersVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts the volume of the music
+MusicVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts the volume of audio in Telescope (MOTD)
+TelescopeVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts the volume for character dialogues and announcer voices
+VoiceVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Adjusts overall volume of the game
+Volume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// War Tracks Volume
+WarTracksVolume@0;14317;21371 = 1.000000 // 0.000000 to 1.000000
+
+// whether to allow MS's 3D spatializer 'Windows Sonic' mode or (false) present a standard 7.1 mix
+WindowsSonicEnable@0;57752;48403 = false
+
+// Using push to talk to activate microphone.
+VoicePushToTalk@0;57752;20945 = true
+
+// Number of output channels requested by the user. Not necessarily the actual channel count. Valid values are 2, 4, 6, 8, 16. Zero means use system default.
+AudioWantedChannelsNumber@0;59395;43096 = 0 // 0 to 16
+
+// Adjusts minimum volume threshold before activating your microphone
+MicThreshold@0;18951;22597 = 0.031623 // 0.000000 to 1.000000
+
+
+//
+// Display
+
+// Enables AMD Antilag 2.
+AmdAntilag2@0;57752;48403 = false
+
+// Force specific aspect ratio independent of window aspect ratio
+AspectRatio@0;19775;7764 = wide 16:9 // one of auto, standard, 5:4, wide 16:10, wide 16:9, wide 18:9, wide 19.5:9, wide 21:9, wide 32:9
+
+// Percentage of window resolution that the 3D scene renders at. value set by the user. can be smaller than the actual.
+ResolutionMultiplier@0;64786;30730 = 100 // 0 to 200
+
+// Enable Intel Xe Low Latency mode (XeLL)
+IntelXeLL@0;57752;48403 = false
+
+// Enable Intel Xe Low Latency mode (XeLL)
+IntelXeLL@1;57752;20945 = true
+
+// Vsync while in menus only
+VSyncInMenu@0;55075;11445 = disabled // one of disabled, 100%, 50%, 33%, 25%
+
+// Enable Nvidia low latency mode. Boost mode request maximum GPU clock frequency regardless of workload
+NvidiaReflex@0;33761;11445 = Enabled // one of Disabled, Enabled, Enabled + boost
+
+// Enable focused mode
+FocusedMode@0;57752;48403 = false
+
+// Set overlay opacity for the focused mode
+FocusedModeOpacity@0;14317;7707 = 0.900000 // 0.000000 to 1.000000
+
+// Constrain mouse to game window
+ConstrainMouse@1;17649;48403 = false
+
+// Color spaces for monitor output
+DisplayGamma@0;57228;7764 = BT709_sRGB // one of BT709_sRGB, BT709_BT1886
+
+// Fullscreen mode
+DisplayMode@0;22564;43096 = Fullscreen // one of Windowed, Fullscreen, Fullscreen borderless window, Fullscreen borderless extended window
+
+// Fullscreen mode preference
+PreferredDisplayMode@0;15994;11445 = Fullscreen // one of Fullscreen, Fullscreen borderless window, Fullscreen borderless extended window
+
+// Synchronizes framerate with refresh rate to prevent screen tearing issues
+VSync@0;55075;7764 = disabled // one of disabled, 100%, 50%, 33%, 25%
+
+
+//
+// Gameplay
+
+// Speed of the cursor when selecting a location on the map when using a MOUSE to control the cursor
+MapLocationSelectionCursorSpeedMouse@0;23423;65063 = 0.600000 // 0.001000 to 2.000000
+
+// Limit blood effects (to 'prevent excess blood stacking')
+BloodLimit@0;57752;48403 = true
+
+// When limiting blood effects, number of milliseconds between effects.
+BloodLimitInterval@0;30928;7741 = 300 // 1 to 2000
+
+// Blink rate of an invalid command hint
+InvalidCmdHintBlinkInterval@0;64284;30837 = 600 // 1 to 10000
+
+// Duration of an invalid command hint
+InvalidCmdHintDuration@0;5208;21990 = 1800 // 0 to 10000
+
+// Speed of the cursor when selecting a location on the map With a gamepad
+MapLocationSelectionCursorSpeed@0;39230;65063 = 0.600000 // 0.001000 to 1.000000
+
+// Marks on entities from player's bullets only.
+MarksEntsPlayerOnly@0;57752;48403 = false
+
+// Show blood effects
+ShowBlood@0;57752;20945 = false
+
+// Weapons eject brass
+ShowBrass@0;57752;20945 = false
+
+// Apply custom framerate limit
+CapFps@0;57752;20945 = false
+
+// Custom maximum frames per second when in a match
+MaxFpsInGame@0;13305;58861 = 250 // 30 to 300
+
+// Custom maximum frames per second when in menus
+MaxFpsInMenu@0;13305;27917 = 120 // 30 to 300
+
+// Custom maximum frames per second when game is out of focus
+MaxFpsOutOfFocus@0;35936;15032 = 30 // 5 to 300
+
+// DOF filter quality
+DepthOfFieldQuality@0;11629;11445 = High // one of Low, High
+
+// maximum number of AI corpses
+CorpseLimit@0;18638;7094 = 0 // 0 to 28
+
+
+//
+// Graphics
+
+// AMD FidelityFX Super Resolution 2 & 3 quality
+AMDSuperResolution2Quality@0;27441;8284 = Balanced // one of Ultra Performance, Maximum Performance, Balanced, Maximum Quality, Native Resolution
+
+// Activate FSR 3 Frame Interpolation
+FSRFrameInterpolation@0;57752;48403 = false
+
+// Strength for Contrast Adaptive Sharpening (CAS)
+AMDContrastAdaptiveSharpeningStrength@0;14317;40397 = 0.900000 // 0.000000 to 1.000000
+
+// Select AMD FidelityFX
+AMDFidelityFX@0;56444;48403 = Off // one of Off, CAS, FSR 1, FSR 3
+
+// Select AMD FidelityFX
+AMDFidelityFX@1;16223;48403 = Off // one of Off, CAS, FSR 1, FSR 3
+
+// AMD FidelityFX Super Resolution quality
+AMDSuperResolutionQuality@0;27441;8284 = Maximum Quality // one of Maximum Performance, Balanced, Maximum Quality, Ultra Quality
+
+// Enable ingame cinematics to play.
+CinematicEmissive@0;57752;20945 = true
+
+// Use fallback movies.
+CinematicQuality@0;57752;48403 = true
+
+// Enable deferred physics
+DeferredPhysics@0;6619;43096 = Low Quality // one of Low Quality, Medium Quality, High Quality
+
+// Enable Depth of Field
+DofEnable@0;29449;43096 = off // one of Off, On, Script
+
+// Disable Weapon Depth of Field
+DofWeaponDisable@0;57752;48403 = true
+
+// Disable World Depth of Field
+DofWorldDisable@0;57752;48403 = false
+
+// DXR Denoiser selection
+DxrDenoiser@0;6377;7764 = Default // one of Default, FSR Ray Regeneration, DLSS Ray Reconstruction
+
+// Enables DirectX Raytracing
+DxrMode@0;37334;7764 = Off // one of Off, On
+
+// Enables DirectX Raytracing
+DxrMode@1;8707;7764 = Off // one of Off, Low, Medium, High, Ultra
+
+// Activate dynamic scene resolution
+DynamicSceneResolution@0;57752;48403 = false
+
+// Target frame time in ms for dynamic scene resolution.
+DynamicSceneResolutionTarget@0;27783;23416 = 16.670000 // 0.000000 to 1000.000000
+
+// Enables motion blur on scene
+MotionBlur@0;37391;43096 = Off // one of Off, On, Cinematic Only
+
+// Enables motion blur on weapon
+WeaponMotionBlur@0;57752;20945 = false
+
+// Absolute target resolution
+AbsoluteTargetResolution@0;64285;26972 = none // one of 540P, 640P, 720P, 900P, 1080P, 1440P, native, none
+
+// Texture quality level, high to low ( higher number means lower resolution )
+TextureQuality@0;61129;7764 = 1 // 0 to 3
+
+// Enable Intel XeSS Frame Generation (XeSS-FG)
+IntelXeFG@0;57752;48403 = false
+
+// Determines how many frames are generated by Intel XeSS Frame Generation.
+IntelXEFGMulti@0;61843;11445 = 1 // 1 to 3
+
+// XeSS quality
+XeSSQuality@0;27441;8284 = Balanced // one of Ultra Performance, Maximum Performance, Balanced, Maximum Quality, Ultra Quality, Ultra Quality Plus, Native Resolution
+
+// Enables optimisations when resizable-bar is supported by uploading more data to VRAM
+GPUUploadHeaps@0;57752;20945 = true
+
+// DLSS mode
+DLSSModeMP@0;21065;20945 = DLSS // one of DLSS
+
+// DLSS mode
+DLSSModeMP@1;51430;20945 = DLSS // one of DLSS
+
+// DLSS performance mode
+DLSSPerfModeMP@0;27441;8284 = Maximum Performance // one of Ultra Performance, Maximum Performance, Balanced, Maximum Quality, Native Resolution
+
+// DLSS Sharpness.
+DLSSSharpnessMP@0;14317;40397 = 0.500000 // 0.000000 to 1.000000
+
+// Activate Nvidia DLSS Frame Generation
+DLSSFrameGeneration@0;57752;48403 = false
+
+// DLSS model
+DLSSModelUI@0;51058;48403 = TRANSFORMER // one of CNN, TRANSFORMER
+
+// Determines the target frame rate for DLSS Multi Frame Generation.
+DLSSFrameGenerationDynamicMulti@0;58837;56359 = 0.000000 // -1.000000 to 3000.000000
+
+// Determines the target frame rate for DLSS Multi Frame Generation.
+DLSSFrameGenerationDynamicMulti@1;56037;57863 = 120.000000 // 100.000000 to 480.000000
+
+// Determines how many frames are generated by DLSS Frame Generation.
+DLSSFrameGenerationmulti@0;61843;11445 = 0 // 1 to 3
+
+// Determines how many frames are generated by DLSS Frame Generation.
+DLSSFrameGenerationmulti@1;21286;11445 = 1 // 1 to 5
+
+// Determines how multi frames are generated by DLSS Frame Generation.
+DLSSFrameGenerationmultiType@0;23977;20945 = Fixed // one of Fixed, Dynamic Auto, Dynamic Manual
+
+// Enable NVIDIA Image Scaling
+NVIDIAImageScalingMP@0;57752;48403 = false
+
+// NVIDIA Image Scaling quality
+NVIDIAImageScalingQualityMP@0;27441;34191 = Maximum Quality // one of Maximum Performance, Balanced, Maximum Quality, Ultra Quality, Native Resolution
+
+// NVIDIA Image Scaling sharpness
+NVIDIAImageScalingSharpnessMP@0;14317;19055 = 0.300000 // 0.000000 to 1.000000
+
+// Enable Offline shaders preload
+EnableOfflineGameUpdater@0;57752;20945 = true
+
+// Offline game updater usage.
+OfflineGameUpdaterUsage@0;40218;11445 = efficient // one of minimum, efficient, maximum
+
+// Enable persistent damage layer
+PersistentDamageLayer@0;57752;20945 = false
+
+// Sets high-impact settings to consume less power in order to reduce battery usage, enabling longer play sessions.
+UserEcoLowBatteryModeUI@0;57752;48403 = false
+
+// Automatically enables Low Battery Mode when the battery reaches the selected level.
+UserEcoLowBatteryThresholdUI@0;46255;143 = 100 // 10 to 100
+
+// Automatically enables Low Battery Mode when the battery reaches the selected level.
+UserEcoLowBatteryThresholdUI@1;15056;30730 = 100 // 10 to 100
+
+// Enable half resolution reflection probes
+ReflectionProbeHalfResolution@0;57752;48403 = true
+
+// If true radial motion blur will be applied based on the player velocity.
+EnableVelocityBasedBlur@0;57752;20945 = true
+
+// Select the shader quality setting
+ShaderQuality@0;19450;7764 = Medium // one of Default, Medium, Low
+
+// Catmull Clark subdivision level
+SubdivisionLevel@0;36080;58629 = 3 // 0 to 8
+
+// Drop the dynamic scene resolution in non-interactive scenes to save power.
+SustainabilityMenuSceneResolution@0;16519;11445 = min // one of off, min, full
+
+// Reduce rendering quality after being idle for a certain time period.
+SustainabilityReduceQualityIdle@0;44449;11445 = full // one of off, min, full
+
+// Reduce rendering quality after being idle for a certain time period.
+SustainabilityReduceQualityIdle@1;51018;9045 = 30 seconds // one of off, 10 minutes, 5 minutes, 1 minute, 30 seconds
+
+// Pause rendering in Multiplayer when entering the pause menu or when out of focus to save power.
+SustainabilityPauseRendering@0;57752;48403 = false
+
+// Pause rendering in Multiplayer when entering the pause menu or when out of focus to save power.
+SustainabilityPauseRendering@1;53673;7764 = 0 // 0 to 1
+
+// Enable Variable Rate Shading
+VRS@0;57752;20945 = true
+
+// Volumetric quality
+VolumetricQuality@0;4276;43096 = QUALITY_LOW // one of QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH, QUALITY_VERYHIGH
+
+// Volumetric quality
+VolumetricQuality@1;4276;58629 = QUALITY_LOW // one of QUALITY_LOW, QUALITY_MEDIUM, QUALITY_HIGH, QUALITY_VERYHIGH
+
+// Select water caustics mode
+WaterCausticsMode@0;41499;11445 = Low Quality // one of Off, Low Quality, High Quality
+
+// Enables persistent static geometry wetness from water waves.
+WaterWaveWetness@0;57752;20945 = false
+
+// Select weather grid volumes quality
+WeatherGridVolumesQuality@0;38459;58629 = Off // one of Off, Low, Medium, High, Ultra
+
+// Set HDR activation mode. Option only takes effect on HDR Display.
+HDR@0;3781;43096 = Off // one of Off, On, Automatic
+
+// Ambient lighting quality
+AmbientLightingQuality@0;20439;58629 = Off // one of Off, Low, Medium, High, Ultra
+
+// Show bullet impacts
+BulletImpacts@0;57752;20945 = true
+
+// Corpses culling threshold
+CorpsesCullingThreshold@0;62572;12490 = 0.850000 // 0.500000 to 1.000000
+
+// Graphics Quality Preset Level
+GraphicsQuality@0;9088;43096 = Balanced // one of Minimum, Basic, Balanced, Ultra, Extreme
+
+// Models quality level
+ModelQuality@0;15002;43096 = Medium Quality // one of Low Quality, Medium Quality, High Quality
+
+// Particle quality level
+ParticleQuality@0;60198;58629 = very low // one of very low, low, medium, high
+
+// Reflection probe relighting update stages
+ReflectionProbeRelighting@0;42543;9045 = 4 // 1 to 4
+
+// Screen Space Shadow quality level
+ScreenSpaceShadowQuality@0;42742;43096 = Off // one of Off, Low, High
+
+// Shading Quality Level
+ShadingQuality@0;14472;11445 = Low // one of Low, High
+
+// Shadow Filtering Quality Level
+ShadowFilteringQuality@0;43900;43096 = Low // one of Low, Medium, High
+
+// Shadow Quality Level
+ShadowQuality@0;3981;58629 = Very_Low // one of Very_Low, Low, Medium, High, Very_High
+
+// Dampens the filmic SMAA steady-state (converged) history blend weight
+SMAAFilmicAlphaStrength@0;54363;21371 = 1.000000 // 0.000000 to 1.000000
+
+// Screen-space reflection quality level
+SSRQuality@0;63075;11445 = Off // one of Off, Low, Medium, High
+
+// Screen-space reflection quality level
+SSRQuality@1;63075;43096 = Off // one of Off, Low, Medium, High
+
+// Static sunshadow moment clipmap resolution
+StaticSunshadowClipmapResolution@0;21851;46253 = 1024 // 0 to 2147483647
+
+// Number of ST LOD to skip
+STLodSkip@0;52787;7764 = 0 // 0 to 5
+
+// Terrain quality
+TerrainQuality@0;36295;58629 = Very Low // one of Very Low, Low, Medium, High, Very High
+
+// Tessellation quality level
+Tessellation@0;27349;11445 = 0_Off // one of 0_Off, 1_Near, 2_All
+
+// Texture filtering quality level
+TextureFilter@0;63279;8284 = aniso 4x // one of aniso 2x, aniso 4x, aniso 8x, aniso 16x
+
+// World streaming quality option
+WorldStreamingQuality@0;6770;11445 = Low // one of Low, High
+
+// User preferred anti-aliasing technique
+AATechniquePreferredMP@0;47961;48403 = DLSS // one of SMAA, DLSS, XeSS, FSR AA
+
+
+//
+// Interface
+
+// Skip introduction movie that plays when game is started
+SkipIntro@1;17649;20945 = true
+
+// Enable the player to skip the spash screen if viewed at least once
+ViewedSplashScreen@0;57752;48403 = true
+
+// Enable/Disable the FPS counter on PC
+ShowFPSCounter@0;57752;48403 = false
+
+// Display the OS cursors instead of the custom game one for accessibility reasons.
+UseOSCursors@1;17649;48403 = false
+
+// Enable hud elements
+EnableHUD@0;57752;20945 = true
+
+// Controls if the season video plays or not.
+SkipSeasonIntroVideo@0;57752;48403 = false
+
+// Whether or not we show the season video when the player logs in the second time on after seeing the season video.
+SkipSeasonVideo@0;57752;20945 = true
+
+
+//
+// Mouse and Gamepad
+
+// Menu scroll key-repeat delay, for the first repeat, in milliseconds
+GamepadMenuScrollDelayFirst@0;2139;26978 = 420 // 0 to 1000
+
+// Menu scroll key-repeat delay acceleration from start to end, for repeats after the first, in milliseconds per repeat
+GamepadMenuScrollDelayRestAccel@0;2139;43096 = 2 // 0 to 1000
+
+// Menu scroll key-repeat delay end, for repeats after the first, in milliseconds
+GamepadMenuScrollDelayRestEnd@0;2139;17479 = 50 // 0 to 1000
+
+// Menu scroll key-repeat delay start, for repeats after the first, in milliseconds
+GamepadMenuScrollDelayRestStart@0;2139;50451 = 210 // 0 to 1000
+
+// Max pitch speed in degrees for game pad
+PitchSpeed@0;13349;2099 = 140.000000 // 0.000000 to 280.000000
+
+// Vehicle mouse steering sensitivity
+VehicleMouseSteerSensitivity@0;15092;9220 = 2.000000 // 0.010000 to 10.000000
+
+// Set minimum delay in milliseconds between valid mouse wheel inputs
+WeaponCycleDelay@0;35888;7764 = 0 // 0 to 5000
+
+// Max yaw speed in degrees for game pad and keyboard
+YawSpeed@0;13349;2099 = 140.000000 // 0.000000 to 280.000000
+
+
+//
+// System
+
+// Allows locally stored files to be synced in with the cloud
+ConfigCloudStorageEnabled@0;57752;20945 = false
+
+// Set a target fraction of your PC's video memory to be used by the game. Affects Multiplayer gamemodes
+VideoMemoryScaleMP@0;59710;7707 = 0.800000 // 0.000000 to 2.000000
+
+// Thread count for handling the job queue
+RendererWorkerCount@0;51989;59387 = 7 // -1 to 16
+
+// Disable autodetect when hardware changes
+DisableHWChangeDetection@0;57752;48403 = false
+
+// Indicates whether recommended settings have been set, will reset settings to recommended if set to 0
+RecommendedSet@0;57752;48403 = true
+'@
+
+Say 'HEAD' 'Slightly Optimised - MW4 config swap'
+
+if (Get-Process -Name 'cod', 'cod_beta' -EA SilentlyContinue) {
+  Say 'ERR' 'Call of Duty is running. Close it first - the game rewrites this file when it exits, which would undo the change.'
+  Done 1
+}
+
+# Where the settings live (the same folders as BO7): Battle.net uses AppData\Local, Steam uses Documents; the
+# beta used its own playersBeta folder.
+$dirs = @(
+  (Join-Path $env:LOCALAPPDATA 'Activision\Call of Duty\players'),
+  (Join-Path $env:LOCALAPPDATA 'Activision\Call of Duty\playersBeta'),
+  (Join-Path $env:USERPROFILE  'Documents\Call of Duty\players'),
+  (Join-Path $env:USERPROFILE  'Documents\Call of Duty\playersBeta')
+) | Where-Object { Test-Path $_ }
+# MW4 is cod26. The name must END in .txt or .txt0, so the .sobak backups are never picked up as targets; a .txt1
+# is the partner of a .txt0, never a target on its own.
+$targets = @()
+if ($dirs) { $targets = @(Get-ChildItem $dirs -Filter 's.*cod26.txt*' -EA SilentlyContinue | Where-Object { $_.Name -match '\.txt0?$' } | Sort-Object LastWriteTime -Descending) }
+if ($targets.Count -eq 0) {
+  Say 'ERR' 'No MW4 settings file found. Launch MW4 once, reach the main menu, close the game, then run this again.'
+  Say 'INFO' ('Looked in: ' + ((@(
+    (Join-Path $env:LOCALAPPDATA 'Activision\Call of Duty\players'),
+    (Join-Path $env:USERPROFILE  'Documents\Call of Duty\players')) -join ' ; ')))
+  Done 1
+}
+function Partner($f) { if ($f -match 'txt0$') { return ($f -replace 'txt0$', 'txt1') } else { return $null } }
+
+# ---- Restore: put the .sobak originals back ----
+if ($Restore) {
+  $n = 0
+  foreach ($tf in $targets) {
+    foreach ($f in @($tf.FullName, (Partner $tf.FullName))) {
+      if ($f -and (Test-Path ($f + '.sobak'))) { Copy-Item ($f + '.sobak') $f -Force; $n++; Say 'OK' ('Restored ' + $f) }
+    }
+  }
+  if ($n -eq 0) { Say 'WARN' 'No .sobak backup found beside the MW4 settings file - nothing to restore.' } else { Say 'OK' 'Original settings put back.' }
+  Done 0
+}
+
+# ---- The preset ----
+if ($PresetPath) {
+  if (-not (Test-Path $PresetPath)) { Say 'ERR' ('Preset file not found: ' + $PresetPath); Done 1 }
+  $src = @(Get-Content $PresetPath)
+  Say 'INFO' ('Preset: ' + $PresetPath)
+} else {
+  $src = @($builtInPreset -split "`r?`n")
+  Say 'INFO' 'Preset: built in'
+}
+if (-not ($src | Where-Object { $_ -match '^[A-Za-z]\w*@\d+;\d+;\d+ = ' })) { Say 'ERR' 'The preset does not look like a Call of Duty settings file.'; Done 1 }
+
+# ---- Back up once (and collapse any .sobak.sobak chains an older app build left) ----
+function Heal-Backups($f) {
+  $chain = @(Get-ChildItem ($f + '.sobak.sobak*') -File -EA SilentlyContinue | Sort-Object { $_.Name.Length } -Descending)
+  if ($chain.Count -eq 0) { return }
+  Copy-Item $chain[0].FullName ($f + '.sobak') -Force
+  foreach ($c in $chain) { Remove-Item $c.FullName -Force -EA SilentlyContinue }
+}
+foreach ($tf in $targets) {
+  foreach ($f in @($tf.FullName, (Partner $tf.FullName))) {
+    if (-not $f -or -not (Test-Path $f)) { continue }
+    Heal-Backups $f
+    if (-not (Test-Path ($f + '.sobak'))) { Copy-Item $f ($f + '.sobak'); Say 'OK' ('Backed up ' + [IO.Path]::GetFileName($f) + ' -> ' + [IO.Path]::GetFileName($f) + '.sobak') }
+    else { Say 'INFO' ('Backup already there (kept as the original): ' + [IO.Path]::GetFileName($f) + '.sobak') }
+  }
+}
+
+# ---- Keys the preset never writes ----
+# Re-detected by the game:
+$dropKeys = @('GPUName','LastUsedGPU','GPUDriverVersion','DisplayDriverVersion','DisplayDriverVersionRecommended',
+              'DetectedFrequencyGHz','DetectedMemoryAmountMB','ESSDI','LastSavedDriveType')
+# The client's own environment. CapFps and HDR are NOT here: the owner's call (2026-10-16) is no frame cap and HDR
+# off on every PC, so the preset's CapFps = false and HDR = Off are written. The cap VALUES stay the client's.
+$keepKeys = @('Monitor','Resolution','RefreshRate','RendererWorkerCount','SoundInputDevice','SoundOutputDevice','VoiceOutputDevice',
+              'WindowX','WindowY','WindowWidth','WindowHeight','WindowMaximized','MaxFpsInGame','MaxFpsInMenu','MaxFpsOutOfFocus')
+# The client's preferences: whole sections, plus these keys.
+$personalSections = @('Audio', 'Interface', 'Mouse and Gamepad')
+$personalKeys = @('AspectRatio','DisplayGamma','FocusedMode','FocusedModeOpacity','ConstrainMouse','DisplayMode','PreferredDisplayMode',
+                  'MapLocationSelectionCursorSpeedMouse','MapLocationSelectionCursorSpeed','InvalidCmdHintBlinkInterval','InvalidCmdHintDuration','VRSValidationMask')
+function Get-PersonalKeys($lines) {
+  $set = @{}; $sec = ''; $hdrNext = $false
+  foreach ($l in $lines) {
+    if ($l -eq '//') { $hdrNext = $true; continue }
+    if ($hdrNext -and $l -match '^// (.+)$') { $sec = $Matches[1].Trim() }
+    $hdrNext = $false
+    $at = $l.IndexOf('@')
+    if ($at -gt 0 -and $l -match '^[A-Za-z]' -and ($personalSections -contains $sec)) { $set[$l.Substring(0, $at)] = $true }
+  }
+  foreach ($k in $personalKeys) { $set[$k] = $true }
+  return $set
+}
+$dropRe = '^(' + ($dropKeys -join '|') + ')@'
+$keepRe = '^(' + ($keepKeys -join '|') + ')@'
+
+# ---- This PC ----
+$hasNvidia = [bool](Get-CimInstance Win32_VideoController -EA SilentlyContinue | Where-Object { $_.PNPDeviceID -match 'VEN_10DE' })
+$coreListSrc = @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public static class SoCpuCores {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetLogicalProcessorInformationEx(int relationshipType, IntPtr buffer, ref uint returnedLength);
+    public static int[] EfficiencyClasses() {
+        uint len = 0;
+        GetLogicalProcessorInformationEx(0, IntPtr.Zero, ref len);
+        if (len == 0) return new int[0];
+        IntPtr buf = Marshal.AllocHGlobal((int)len);
+        try {
+            if (!GetLogicalProcessorInformationEx(0, buf, ref len)) return new int[0];
+            List<int> classes = new List<int>();
+            int off = 0;
+            while (off + 10 <= (int)len) {
+                int rel = Marshal.ReadInt32(buf, off);
+                int size = Marshal.ReadInt32(buf, off + 4);
+                if (size < 10) break;
+                if (rel == 0) classes.Add(Marshal.ReadByte(buf, off + 9));
+                off += size;
+            }
+            return classes.ToArray();
+        } finally { Marshal.FreeHGlobal(buf); }
+    }
+}
+'@
+$cpu = Get-CimInstance Win32_Processor -EA SilentlyContinue | Select-Object -First 1
+$cpuName = "$($cpu.Name)".Trim()
+$cores = [int]$cpu.NumberOfCores
+$threads = [int]$cpu.NumberOfLogicalProcessors; if ($threads -lt 1) { $threads = [Environment]::ProcessorCount }
+$pCores = 0; $eCores = 0
+if ("$($cpu.Manufacturer)" -match 'Intel') {
+  $read = $false
+  try {
+    if (-not ('SoCpuCores' -as [type])) { Add-Type -TypeDefinition $coreListSrc -Language CSharp -EA Stop }
+    $classes = @([SoCpuCores]::EfficiencyClasses())
+    if ($classes.Count -gt 0) {
+      $top = [int](($classes | Measure-Object -Maximum).Maximum)
+      $nTop = @($classes | Where-Object { $_ -eq $top }).Count
+      if (@($classes | Sort-Object -Unique).Count -gt 1) { $pCores = $nTop; $eCores = $classes.Count - $nTop }
+      $read = $true
+    }
+  } catch { }
+  if (-not $read) { $d = $threads - $cores; if ($d -ge 1 -and $d -lt $cores) { $pCores = $d; $eCores = $cores - $d } }
+}
+if ($cpuName -match '(7900X3D|7950X3D|9900X3D|9950X3D)') { $workers = [int]($cores / 2) - 1; $why = 'the V-cache cores minus one' }
+elseif ($pCores -gt 0) { $workers = $pCores - 1; $why = "$pCores performance cores minus one (not the $eCores efficiency cores)" }
+else { $workers = [math]::Min($cores - 1, 16); $why = "$cores cores minus one, at most 16" }
+if ($workers -lt 2) { $workers = 2; $why += ', raised to the minimum of 2' }
+Say 'INFO' ('CPU: ' + $cpuName + ' - ' + $cores + ' cores, ' + $threads + ' threads. RendererWorkerCount ' + $workers + ' (' + $why + ').')
+Say 'INFO' ('Graphics: ' + $(if ($hasNvidia) { 'NVIDIA - the preset''s DLSS settings are used.' } else { 'not NVIDIA - anti-aliasing set to SMAA, DLSS keys left alone.' }))
+
+# ---- Merge ----
+$script:notWritten = New-Object System.Collections.Generic.List[string]
+function Apply-Preset($src, $dstFile) {
+  $orig = @(); if (Test-Path $dstFile) { $orig = @(Get-Content $dstFile) }
+  $personal = Get-PersonalKeys $src
+  $out = New-Object System.Collections.Generic.List[string]
+  if ($orig.Count -gt 0) {
+    # The client's own file is the base: walk it and replace only the VALUES of keys the preset tunes, keyed by
+    # name plus variant index ("SSRQuality@1"), so the client's own IDs stay on every line. Keys the client's file
+    # does not have are not added.
+    $tune = @{}
+    foreach ($l in $src) {
+      $at = $l.IndexOf('@'); $eq = $l.IndexOf(' = ')
+      if ($at -gt 0 -and $eq -gt $at) {
+        $kk = ($l.Substring(0, $eq) -split ';')[0]
+        $val = $l.Substring($eq + 3); $c = $val.IndexOf(' //'); if ($c -ge 0) { $val = $val.Substring(0, $c) }
+        if (-not $tune.ContainsKey($kk)) { $tune[$kk] = $val.TrimEnd() }
+      }
+    }
+    $skip = @($dropKeys + $keepKeys + @($personal.Keys))
+    foreach ($kk in @($tune.Keys)) {
+      $n = $kk.Substring(0, $kk.IndexOf('@'))
+      if (($skip -contains $n) -or (-not $hasNvidia -and $n -like 'DLSS*')) { [void]$tune.Remove($kk) }
+    }
+    $tune['RendererWorkerCount@0'] = "$workers"
+    if (-not $hasNvidia) { foreach ($kk in @($tune.Keys)) { if ($kk -like 'AATechniquePreferredMP@*') { $tune[$kk] = ($tune[$kk] -replace 'DLSS', 'SMAA') } } }
+    foreach ($l in $orig) {
+      $at = $l.IndexOf('@'); $eq = $l.IndexOf(' = ')
+      if ($at -gt 0 -and $eq -gt $at) {
+        $k = ($l.Substring(0, $eq) -split ';')[0]
+        if ($tune.ContainsKey($k)) {
+          $v = $tune[$k]; $tail = ''; $opts = $null
+          if ($l -match '( // (.*))$') { $tail = $Matches[1]; if ($Matches[2] -match '^one of (.+)$') { $opts = @($Matches[1] -split ',' | ForEach-Object { $_.Trim() }) } }
+          # A listed value is written in the list's own spelling ("off" in a preset becomes "Off"), so the game
+          # never meets a value it does not recognise and quietly resets the setting to its default.
+          if ($null -eq $opts) { $out.Add($l.Substring(0, $eq + 3) + $v + $tail); continue }
+          $hit = @($opts | Where-Object { $_ -ieq $v } | Select-Object -First 1)
+          if ($hit.Count -gt 0) { $out.Add($l.Substring(0, $eq + 3) + $hit[0] + $tail); continue }
+          $msg = $k + ' = ' + $v + ' (this file accepts: ' + ($opts -join ', ') + ')'
+          if (-not $script:notWritten.Contains($msg)) { $script:notWritten.Add($msg) }
+        }
+      }
+      $out.Add($l)
+    }
+  } else {
+    # No file on this PC yet: the preset is the base, without the detection, environment and personal keys.
+    foreach ($line in $src) {
+      if ($line -match $dropRe) { continue }
+      $pk = $line.IndexOf('@')
+      if ($pk -gt 0 -and $line -match '^[A-Za-z]' -and $personal.ContainsKey($line.Substring(0, $pk))) { continue }
+      if ($line -match '^RendererWorkerCount@') { $eq = $line.IndexOf(' = '); if ($eq -gt 0) { $out.Add($line.Substring(0, $eq + 3) + "$workers") }; continue }
+      if ($line -match $keepRe) { continue }
+      if (-not $hasNvidia -and $line -match '^AATechniquePreferredMP@') { $out.Add(($line -replace '= DLSS', '= SMAA')); continue }
+      $out.Add($line)
+    }
+  }
+  # The game's own format: LF line endings, no BOM. (Set-Content -Encoding UTF8 adds a BOM and CRLF, which the
+  # game can reject and then silently reset to its defaults.)
+  [IO.File]::WriteAllText($dstFile, (($out -join "`n") + "`n"))
+}
+function Read-Value($f, $name) {
+  foreach ($l in @(Get-Content $f -EA SilentlyContinue)) {
+    if ($l -match ('^' + [regex]::Escape($name) + '@\d+;\d+;\d+ = (.*?)(?: //.*)?$')) { return $Matches[1].Trim() }
+  }
+  return '(not in this file)'
+}
+
+foreach ($tf in $targets) {
+  Say 'HEAD' ('MW4 settings: ' + $tf.FullName)
+  $script:notWritten.Clear()
+  Apply-Preset $src $tf.FullName
+  $p = Partner $tf.FullName; if ($p -and (Test-Path $p)) { Apply-Preset $src $p }
+  $rb = @(); foreach ($k in 'GraphicsQuality', 'ResolutionMultiplier', 'AATechniquePreferredMP', 'DLSSPerfModeMP', 'ShadowQuality', 'TextureQuality', 'RendererWorkerCount', 'NvidiaReflex') { $rb += ($k + '=' + (Read-Value $tf.FullName $k)) }
+  Say 'OK' ('Written and read back: ' + ($rb -join ', '))
+  foreach ($nw in $script:notWritten) { Say 'WARN' ('Not written - ' + $nw + '. The preset value is not one this file accepts.') }
+}
+
+# ---- Shader caches (optional) ----
+if ($RebuildShaders) {
+  Say 'HEAD' 'Shader caches'
+  $roots = @()
+  foreach ($k in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Call of Duty', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Call of Duty')) {
+    $il = (Get-ItemProperty $k -EA SilentlyContinue).InstallLocation; if ($il -and (Test-Path $il)) { $roots += $il }
+  }
+  foreach ($b in @(${env:ProgramFiles(x86)}, $env:ProgramData, $env:LOCALAPPDATA)) {
+    if ($b) { foreach ($s in 'Call of Duty', 'Activision') { $p = Join-Path $b $s; if (Test-Path $p) { $roots += $p } } }
+  }
+  foreach ($k in @('HKCU:\Software\Valve\Steam', 'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam', 'HKLM:\SOFTWARE\Valve\Steam')) {
+    $sp = (Get-ItemProperty -Path $k -EA SilentlyContinue).SteamPath; if (-not $sp) { $sp = (Get-ItemProperty -Path $k -EA SilentlyContinue).InstallPath }
+    if ($sp -and (Test-Path $sp)) {
+      $sp = $sp -replace '/', '\'; $libs = @($sp); $vdf = Join-Path $sp 'steamapps\libraryfolders.vdf'
+      if (Test-Path $vdf) { foreach ($m in [regex]::Matches((Get-Content $vdf -Raw), '"path"\s+"([^"]+)"')) { $libs += ($m.Groups[1].Value -replace '\\\\', '\') } }
+      foreach ($l in $libs) { foreach ($n in 'Call of Duty HQ', 'Call of Duty') { $p = Join-Path $l ('steamapps\common\' + $n); if (Test-Path $p) { $roots += $p } } }
+      break
+    }
+  }
+  $cleared = 0
+  foreach ($r in @($roots | Select-Object -Unique)) {
+    foreach ($d in @(Get-ChildItem -Path $r -Directory -Recurse -Depth 3 -EA SilentlyContinue | Where-Object { $_.Name -ieq 'shadercache' })) {
+      Get-ChildItem $d.FullName -Force -EA SilentlyContinue | Remove-Item -Recurse -Force -EA SilentlyContinue
+      $cleared++; Say 'OK' ('Cleared ' + $d.FullName)
+    }
+  }
+  foreach ($sub in 'NVIDIA\DXCache', 'NVIDIA\GLCache', 'AMD\DxCache', 'AMD\DXCache', 'AMD\GLCache', 'AMD\VkCache', 'D3DSCache') {
+    $p = Join-Path $env:LOCALAPPDATA $sub; if (Test-Path $p) { Get-ChildItem $p -Force -EA SilentlyContinue | Remove-Item -Recurse -Force -EA SilentlyContinue; $cleared++ }
+  }
+  if ($cleared -eq 0) { Say 'INFO' 'No shader cache folder found. In the game: Settings > Graphics > Display > Restart Shader Preloading.' }
+  else { Say 'OK' 'Shaders preload again on the next MW4 launch - let it finish before playing.' }
+}
+
+Say 'OK' 'Done. The original is beside the file as .sobak - run this with -Restore to put it back.'
+Say 'WARN' 'If MW4 asks about changed settings when it starts, choose Keep Existing.'
+Done 0

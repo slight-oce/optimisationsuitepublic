@@ -9,6 +9,8 @@ change in BIOS.
 
 This repository exists to host those downloads. The source is private.
 
+**New: [MW4 settings script](MW4/)** - one script that sets Call of Duty: Modern Warfare 4 to our competitive settings on any PC, with an undo.
+
 ---
 
 ## Which build do I want?
