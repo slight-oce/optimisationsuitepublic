@@ -8,8 +8,8 @@ One script that sets Call of Duty: Modern Warfare 4 to Slightly Optimised's comp
 
 1. Close Call of Duty.
 2. Right-click the downloaded zip, choose **Extract All**, and open the folder.
-3. Double-click **Run MW4 Config.cmd**, or **Run MW4 Config - Low.cmd** for the Low version (below). If Windows warns
-   about the file, choose **More info**, then **Run anyway**.
+3. Double-click **Run MW4 Config.cmd** and choose **1 Recommended** or **2 Low** (below). If Windows warns about the
+   file, choose **More info**, then **Run anyway**.
 4. Launch MW4. If it asks about changed settings, choose **Keep Existing**.
 
 Run it as your normal Windows user. Administrator is not needed.
@@ -22,10 +22,12 @@ Run it as your normal Windows user. Administrator is not needed.
 - No NVIDIA RTX card (DLSS needs one): anti-aliasing is set to SMAA and the DLSS settings are left alone. Built-in graphics on your CPU make no difference.
 - If MW4 was set to run on built-in graphics but your PC has an NVIDIA card, it is switched to the NVIDIA card.
 
-## The Low version
+## Recommended or Low
 
-The same settings with shaders, textures, models and texture filtering at their lowest, and water caustics off.
-DLSS, Reflex and everything else are the same as the standard version. For older or weaker PCs, or the most frames.
+**Recommended** is the competitive set described below. **Low** is the same, with:
+
+shaders, textures, models and texture filtering at their lowest, and water caustics off. DLSS, Reflex and everything
+else are the same. Pick Low for older or weaker PCs, or the most frames.
 
 ## What it leaves alone
 

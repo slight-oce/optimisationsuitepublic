@@ -16,13 +16,14 @@
 #   - checks every value against the list the client's own file accepts, and names any it could not write.
 #
 # RUN IT AS THE CLIENT'S OWN WINDOWS USER (the settings live in that user's AppData), with Call of Duty closed.
-#   Apply the built-in preset:    powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1
-#   The Low version:              ... -File .\Apply-MW4-Config.ps1 -Low   (shaders, textures, models and texture
-#                                 filtering at their lowest; everything else, DLSS included, as the built-in preset)
+#   Apply, choosing on screen:    powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1
+#                                 (asks: 1 Recommended, 2 Low - Low has shaders, textures, models and texture filtering at
+#                                 their lowest; everything else, DLSS included, is the same)
+#   Skip the question:            ... -File .\Apply-MW4-Config.ps1 -Recommended   or   ... -Low
 #   Apply a preset file instead:  ... -File .\Apply-MW4-Config.ps1 -PresetPath "D:\presets\s.1.0.cod26.txt"
 #   Also clear shader caches:     ... -File .\Apply-MW4-Config.ps1 -RebuildShaders
 #   Put the original back:        ... -File .\Apply-MW4-Config.ps1 -Restore
-param([string]$PresetPath = '', [switch]$Low, [switch]$Restore, [switch]$RebuildShaders, [switch]$NoPause)
+param([string]$PresetPath = '', [switch]$Recommended, [switch]$Low, [switch]$Restore, [switch]$RebuildShaders, [switch]$NoPause)
 $ErrorActionPreference = 'SilentlyContinue'
 
 function Say($kind, $text) {
@@ -553,6 +554,15 @@ $lowValues = [ordered]@{
   'ModelQuality'      = 'Low Quality'  # one of Low Quality, Medium Quality, High Quality
   'WaterCausticsMode' = 'Off'          # one of Off, Low Quality, High Quality
 }
+# The player chooses, unless the command line already did (or a preset file was given).
+if (-not $Low -and -not $Recommended -and -not $PresetPath) {
+  Say 'HEAD' 'Which settings?'
+  Say 'INFO' '  1  Recommended - competitive settings, with DLSS where the graphics card has it'
+  Say 'INFO' '  2  Low - the same, with shaders, textures and models at their lowest (older or weaker PCs, most frames)'
+  $pick = Read-Host 'Type 1 or 2 and press Enter (Enter on its own = 1)'
+  if ("$pick".Trim() -eq '2') { $Low = $true }
+}
+if (-not $PresetPath) { Say 'INFO' ('Settings: ' + $(if ($Low) { 'Low' } else { 'Recommended' })) }
 if ($Low) {
   for ($i = 0; $i -lt $src.Count; $i++) {
     foreach ($k in $lowValues.Keys) {
