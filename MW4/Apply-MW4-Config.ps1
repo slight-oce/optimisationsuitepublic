@@ -17,10 +17,12 @@
 #
 # RUN IT AS THE CLIENT'S OWN WINDOWS USER (the settings live in that user's AppData), with Call of Duty closed.
 #   Apply the built-in preset:    powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1
+#   The Low version:              ... -File .\Apply-MW4-Config.ps1 -Low   (shaders, textures, models and texture
+#                                 filtering at their lowest; everything else, DLSS included, as the built-in preset)
 #   Apply a preset file instead:  ... -File .\Apply-MW4-Config.ps1 -PresetPath "D:\presets\s.1.0.cod26.txt"
 #   Also clear shader caches:     ... -File .\Apply-MW4-Config.ps1 -RebuildShaders
 #   Put the original back:        ... -File .\Apply-MW4-Config.ps1 -Restore
-param([string]$PresetPath = '', [switch]$Restore, [switch]$RebuildShaders, [switch]$NoPause)
+param([string]$PresetPath = '', [switch]$Low, [switch]$Restore, [switch]$RebuildShaders, [switch]$NoPause)
 $ErrorActionPreference = 'SilentlyContinue'
 
 function Say($kind, $text) {
@@ -541,6 +543,23 @@ if ($PresetPath) {
 } else {
   $src = @($builtInPreset -split "`r?`n")
   Say 'INFO' 'Preset: built in'
+}
+# LOW: the same preset with the heaviest remaining quality settings at their lowest. Every value is the lowest one the
+# game's own list offers for that key; DLSS, Reflex and everything else stay as the preset has them.
+$lowValues = [ordered]@{
+  'ShaderQuality'     = 'Low'          # one of Default, Medium, Low
+  'TextureQuality'    = '3'            # 0 to 3 - higher number means lower resolution
+  'TextureFilter'     = 'aniso 2x'     # one of aniso 2x, aniso 4x, aniso 8x, aniso 16x
+  'ModelQuality'      = 'Low Quality'  # one of Low Quality, Medium Quality, High Quality
+  'WaterCausticsMode' = 'Off'          # one of Off, Low Quality, High Quality
+}
+if ($Low) {
+  for ($i = 0; $i -lt $src.Count; $i++) {
+    foreach ($k in $lowValues.Keys) {
+      if ($src[$i] -match ('^(' + $k + '@\d+;\d+;\d+ = )(.*?)((?: //.*)?)$')) { $src[$i] = $Matches[1] + $lowValues[$k] + $Matches[3] }
+    }
+  }
+  Say 'INFO' ('Low version: ' + (($lowValues.Keys | ForEach-Object { $_ + ' ' + $lowValues[$_] }) -join ', ') + '.')
 }
 if (-not ($src | Where-Object { $_ -match '^[A-Za-z]\w*@\d+;\d+;\d+ = ' })) { Say 'ERR' 'The preset does not look like a Call of Duty settings file.'; Done 1 }
 
