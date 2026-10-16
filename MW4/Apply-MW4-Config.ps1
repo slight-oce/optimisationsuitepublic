@@ -6,7 +6,8 @@
 #   - MERGES the preset onto the client's own file: only the graphics and performance VALUES change. The client's
 #     own setting IDs stay on every line, and their display mode, resolution, refresh rate, monitor, aspect ratio,
 #     audio and mic devices, controller and HUD settings, window placement and cap values are left alone;
-#   - turns the frame cap off and HDR off on every PC (owner's call);
+#   - turns the frame cap off and HDR off on every PC (owner's call), and the game's Resizable BAR uploads off
+#     (GPUUploadHeaps = false - the same as the app's "ReBAR off" CoD presets);
 #   - sets RendererWorkerCount for this PC's CPU (dual-CCD X3D: the V-cache cores minus one; Intel with E-cores:
 #     the performance cores minus one; anything else: cores minus one, at most 16);
 #   - on a PC without an NVIDIA card, switches DLSS anti-aliasing to SMAA and leaves the DLSS keys alone;
@@ -244,7 +245,7 @@ IntelXEFGMulti@0;61843;11445 = 1 // 1 to 3
 XeSSQuality@0;27441;8284 = Balanced // one of Ultra Performance, Maximum Performance, Balanced, Maximum Quality, Ultra Quality, Ultra Quality Plus, Native Resolution
 
 // Enables optimisations when resizable-bar is supported by uploading more data to VRAM
-GPUUploadHeaps@0;57752;20945 = true
+GPUUploadHeaps@0;57752;20945 = false
 
 // DLSS mode
 DLSSModeMP@0;21065;20945 = DLSS // one of DLSS

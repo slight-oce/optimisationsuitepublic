@@ -20,7 +20,7 @@ Run it as your normal Windows user. Administrator is not needed.
 ## What it changes
 
 - The graphics and performance settings, written onto **your own** settings file.
-- Frame cap off and HDR off.
+- Frame cap off, HDR off, and the game's Resizable BAR setting off.
 - Renderer worker count sized to your CPU (performance cores minus one on Intel with E-cores, the V-cache cores minus one on dual-CCD X3D Ryzen, otherwise cores minus one).
 - No NVIDIA card: anti-aliasing is set to SMAA and the DLSS settings are left alone.
 
