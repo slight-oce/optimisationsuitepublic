@@ -2,18 +2,14 @@
 
 One script that sets Call of Duty: Modern Warfare 4 to Slightly Optimised's competitive settings on any PC.
 
-**[Download Apply-MW4-Config.ps1](https://github.com/slight-oce/optimisationsuitepublic/raw/main/MW4/Apply-MW4-Config.ps1)**
+**[Download SO-MW4-Config.zip](https://github.com/slight-oce/optimisationsuitepublic/raw/main/MW4/SO-MW4-Config.zip)**
 
 ## How to use it
 
 1. Close Call of Duty.
-2. Right-click the Start button, open **Terminal** (or **PowerShell**), and run, from the folder you downloaded to:
-
-   ```
-   powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1
-   ```
-
-3. Launch MW4. If it asks about changed settings, choose **Keep Existing**.
+2. Right-click the downloaded zip, choose **Extract All**, and open the folder.
+3. Double-click **Run MW4 Config.cmd**. If Windows warns about the file, choose **More info**, then **Run anyway**.
+4. Launch MW4. If it asks about changed settings, choose **Keep Existing**.
 
 Run it as your normal Windows user. Administrator is not needed.
 
@@ -30,10 +26,8 @@ Your display mode, resolution, refresh rate and monitor, aspect ratio, every aud
 
 ## Undo
 
-Your original file is saved beside it as `.sobak` before anything changes. To put it back:
+Your original file is saved beside it as `.sobak` before anything changes. To put it back, close Call of Duty and
+double-click **Undo MW4 Config.cmd**.
 
-```
-powershell -ExecutionPolicy Bypass -File .\Apply-MW4-Config.ps1 -Restore
-```
-
-Add `-RebuildShaders` to also clear the shader caches, so MW4 preloads its shaders again for the new settings.
+The script itself is `Apply-MW4-Config.ps1`, readable in any text editor. Run it with `-RebuildShaders` to also
+clear the shader caches, so MW4 preloads its shaders again for the new settings.
