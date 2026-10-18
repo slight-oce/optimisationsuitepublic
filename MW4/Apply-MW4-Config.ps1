@@ -498,7 +498,9 @@ RecommendedSet@0;57752;48403 = true
 
 Say 'HEAD' 'Slightly Optimised - MW4 config swap'
 
-if (Get-Process -Name 'cod', 'cod_beta' -EA SilentlyContinue) {
+# cod.exe is the Call of Duty launcher; the game is its own process (codNN-cod.exe, cod26-cod.exe for MW4 by the
+# numbering of the settings files).
+if (Get-Process -Name 'cod', 'cod_beta', 'cod2*-cod' -EA SilentlyContinue) {
   Say 'ERR' 'Call of Duty is running. Close it first - the game rewrites this file when it exits, which would undo the change.'
   Done 1
 }
